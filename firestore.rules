@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isPageOwner(pageId) {
+      return isSignedIn() && get(/databases/$(database)/documents/pages/$(pageId)).data.ownerId == request.auth.uid;
+    }
+    
+    // Pages Collection
+    match /pages/{pageId} {
+      // Guests can read published pages only
+      allow read: if resource.data.status == 'published';
+      
+      // Owners can read their own pages
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      // Admin can read all pages
+      allow read: if isAdmin();
+      
+      // Only admin can create pages
+      allow create: if isAdmin();
+      
+      // Only admin can update pages
+      allow update: if isAdmin();
+      
+      // Only admin can delete pages
+      allow delete: if isAdmin();
+    }
+    
+    // Users Collection
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isSignedIn() && userId == request.auth.uid;
+      
+      // Admin can read all user profiles
+      allow read: if isAdmin();
+      
+      // New users can create their profile on signup
+      allow create: if isSignedIn() && userId == request.auth.uid;
+      
+      // Users can update their own profile (name only)
+      allow update: if isSignedIn() && userId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'ownedPages']);
+      
+      // Admin can update any user profile
+      allow update: if isAdmin();
+    }
+  }
+}
